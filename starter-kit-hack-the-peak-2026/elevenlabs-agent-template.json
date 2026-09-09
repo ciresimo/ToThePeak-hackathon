@@ -1,0 +1,403 @@
+{
+  "_commento": "Template di partenza per l'agente ElevenLabs. Importalo e adattalo: e' una base, non una soluzione. Il prompt qui sotto passa gli scenari facili e fallisce quelli difficili, che e' esattamente il punto della giornata. Prima di importare: togli questa riga _commento, sostituisci INCOLLA-QUI-LA-TUA-KEY con la key della tua area personale (quella che comincia per htp_ing_) e metti l'URL vero della tua Edge Function al posto del placeholder in salva_lead.",
+  "name": "Casavo Front Desk — <il tuo nome>",
+  "conversation_config": {
+    "tts": {
+      "model_id": "eleven_flash_v2_5"
+    },
+    "agent": {
+      "first_message": "Casavo, buongiorno. Sono l'assistente che raccoglie le richieste di valutazione. Mi dice come posso aiutarla?",
+      "language": "it",
+      "prompt": {
+        "prompt": "Sei il front desk di Casavo. Parli con proprietari che chiamano per vendere casa.\n\nCasavo lavora con una rete di agenti immobiliari. Non compra immobili in proprio e non fa offerte in contanti: se te lo chiedono, chiariscilo senza promettere un acquisto.\n\nIl tuo lavoro in ogni telefonata:\n1. Capire di che casa si tratta: indirizzo, citta, superficie, piano, stato di conservazione, e se chi parla e' il proprietario o decide con altri.\n2. Capire quanto quella persona e' davvero pronta a vendere: perche vende, cosa succede dopo, e in che tempi reali. La data che ti dicono non e' sempre quella vera: se il racconto la smentisce, fidati del racconto e chiedi.\n3. Chiedere la valutazione al sistema Casavo con i dati raccolti, comunicarla come forchetta e saperla motivare.\n4. Fissare l'appuntamento con l'agente della citta giusta, ma solo quando ha senso farlo.\n5. Scrivere tutto nella console dell'agente prima di chiudere.\n\nNon prometti prezzi, non dai dati di vendite di terzi, non insisti con chi non vuole essere contattato.\n\nParla come una persona, non come un modulo. Una domanda alla volta.",
+        "llm": "gemini-2.5-flash",
+        "temperature": 0.3,
+        "tools": [
+          {
+            "type": "webhook",
+            "name": "cerca_immobile",
+            "description": "Cerca un immobile nel catalogo Casavo per indirizzo e città. Usalo per verificare i dati dichiarati dal proprietario prima di procedere.",
+            "api_schema": {
+              "url": "https://hackthepeak.yellowtest.it/casavo/listings/lookup",
+              "method": "GET",
+              "query_params_schema": {
+                "properties": {
+                  "address": {
+                    "type": "string",
+                    "description": "Indirizzo dell'immobile con il numero civico, come lo ha detto il proprietario. Esempio: 'Via Torino 12'."
+                  },
+                  "city": {
+                    "type": "string",
+                    "description": "Città dell'immobile, nome italiano per esteso. Esempio: 'Milano'."
+                  }
+                },
+                "required": ["address"]
+              },
+              "request_headers": { "X-Participant-Key": "INCOLLA-QUI-LA-TUA-KEY" }
+            }
+          },
+          {
+            "type": "webhook",
+            "name": "valuta_immobile",
+            "description": "Restituisce la forchetta di prezzo con tre comparabili e il grado di confidenza. Chiamalo dopo aver raccolto superficie, piano, stato e classe energetica.",
+            "api_schema": {
+              "url": "https://hackthepeak.yellowtest.it/casavo/valuations/estimate",
+              "method": "POST",
+              "request_body_schema": {
+                "type": "object",
+                "properties": {
+                  "city": {
+                    "type": "string",
+                    "description": "Città dell'immobile, nome italiano per esteso. Esempio: 'Milano'."
+                  },
+                  "zone": {
+                    "type": "string",
+                    "description": "Zona o quartiere dell'immobile. Esempio: 'Isola'. Omettilo se il proprietario non lo sa dire."
+                  },
+                  "sqm": {
+                    "type": "integer",
+                    "description": "Superficie commerciale in metri quadri, solo il numero intero, senza unità di misura."
+                  },
+                  "floor": {
+                    "type": "integer",
+                    "description": "Piano dell'immobile come numero intero. Usa 0 per il piano terra."
+                  },
+                  "elevator": {
+                    "type": "boolean",
+                    "description": "true se il palazzo ha l'ascensore, false se non ce l'ha."
+                  },
+                  "condition": {
+                    "type": "string",
+                    "description": "Stato di conservazione. Uno fra: nuovo, ristrutturato, buono_stato, da_ristrutturare."
+                  },
+                  "energy_class": {
+                    "type": "string",
+                    "description": "Classe energetica dichiarata: una lettera singola da A a G."
+                  }
+                },
+                "required": ["city", "sqm"]
+              },
+              "request_headers": { "X-Participant-Key": "INCOLLA-QUI-LA-TUA-KEY" }
+            }
+          },
+          {
+            "type": "webhook",
+            "name": "slot_liberi",
+            "description": "Slot liberi degli agenti che coprono una città.",
+            "api_schema": {
+              "url": "https://hackthepeak.yellowtest.it/casavo/slots",
+              "method": "GET",
+              "query_params_schema": {
+                "properties": {
+                  "city": {
+                    "type": "string",
+                    "description": "Città in cui cercare l'agente che copre la zona. Esempio: 'Milano'."
+                  },
+                  "from": {
+                    "type": "string",
+                    "description": "Primo giorno da considerare, formato AAAA-MM-GG. Esempio: '2026-09-10'."
+                  },
+                  "to": {
+                    "type": "string",
+                    "description": "Ultimo giorno da considerare, formato AAAA-MM-GG. Esempio: '2026-09-13'."
+                  }
+                },
+                "required": ["city"]
+              },
+              "request_headers": { "X-Participant-Key": "INCOLLA-QUI-LA-TUA-KEY" }
+            }
+          },
+          {
+            "type": "webhook",
+            "name": "prenota_appuntamento",
+            "description": "Prenota uno slot. Non chiamarlo se il proprietario non e' nelle condizioni di vendere.",
+            "api_schema": {
+              "url": "https://hackthepeak.yellowtest.it/casavo/appointments",
+              "method": "POST",
+              "request_body_schema": {
+                "type": "object",
+                "properties": {
+                  "slot_id": {
+                    "type": "string",
+                    "description": "Codice dello slot scelto, preso dalla risposta di slot_liberi. Formato SLT-00042."
+                  },
+                  "lead_name": {
+                    "type": "string",
+                    "description": "Nome e cognome del proprietario che riceverà l'agente."
+                  },
+                  "lead_phone": {
+                    "type": "string",
+                    "description": "Numero di telefono del proprietario, in cifre."
+                  },
+                  "city": {
+                    "type": "string",
+                    "description": "Città dell'immobile da visitare."
+                  },
+                  "notes": {
+                    "type": "string",
+                    "description": "Nota per l'agente immobiliare: cosa deve sapere prima della visita, una o due frasi."
+                  }
+                },
+                "required": ["slot_id"]
+              },
+              "request_headers": { "X-Participant-Key": "INCOLLA-QUI-LA-TUA-KEY" }
+            }
+          },
+          {
+            "type": "webhook",
+            "name": "salva_lead",
+            "description": "Scrive la scheda completa del lead nella console dell'agente. Chiamalo sempre prima di chiudere la conversazione. Compila ogni campo che hai davvero raccolto: quello che lasci vuoto il giudice lo legge come non raccolto.",
+            "api_schema": {
+              "url": "https://<ref>.supabase.co/functions/v1/ingest",
+              "method": "POST",
+              "request_body_schema": {
+                "type": "object",
+                "properties": {
+                  "conversation_id": {
+                    "type": "string",
+                    "dynamic_variable": "system__conversation_id"
+                  },
+                  "lead": {
+                    "type": "object",
+                    "description": "I dati dell'immobile e di chi lo possiede, come li hai raccolti al telefono.",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "Nome e cognome del proprietario, come li ha detti al telefono."
+                      },
+                      "phone": {
+                        "type": "string",
+                        "description": "Numero di telefono del proprietario, in cifre."
+                      },
+                      "address": {
+                        "type": "string",
+                        "description": "Indirizzo dell'immobile con il numero civico. Esempio: 'Via Torino 12'."
+                      },
+                      "city": {
+                        "type": "string",
+                        "description": "Città dell'immobile, nome italiano per esteso. Esempio: 'Milano'."
+                      },
+                      "sqm": {
+                        "type": "integer",
+                        "description": "Superficie in metri quadri, numero intero e non testo."
+                      },
+                      "floor": {
+                        "type": "integer",
+                        "description": "Piano dell'immobile come numero intero. Usa 0 per il piano terra."
+                      },
+                      "elevator": {
+                        "type": "boolean",
+                        "description": "true se il palazzo ha l'ascensore, false se non ce l'ha."
+                      },
+                      "condition": {
+                        "type": "string",
+                        "description": "Stato di conservazione. Uno fra: nuovo, ristrutturato, buono_stato, da_ristrutturare."
+                      },
+                      "energy_class": {
+                        "type": "string",
+                        "description": "Classe energetica dichiarata: una lettera singola da A a G."
+                      },
+                      "year_built": {
+                        "type": "integer",
+                        "description": "Anno di costruzione dell'edificio, quattro cifre. Esempio: 1972."
+                      },
+                      "ownership": {
+                        "type": "string",
+                        "description": "Titolarità di chi sta parlando. Uno fra: proprietario_unico, comproprietario, coerede, altro."
+                      }
+                    }
+                  },
+                  "readiness": {
+                    "type": "object",
+                    "description": "Quanto il proprietario è davvero pronto a vendere, con il progetto di vendita e i tempi reali dietro a quelli dichiarati.",
+                    "properties": {
+                      "class": {
+                        "type": "string",
+                        "description": "Classificazione della predisposizione a vendere. Uno fra: pronto_a_mandato, in_valutazione, vincolato, esplorativo, non_lavorabile."
+                      },
+                      "sale_project": {
+                        "type": "object",
+                        "description": "Il progetto di vendita: perché vende e cosa deve succedere prima o dopo.",
+                        "properties": {
+                          "reason": {
+                            "type": "string",
+                            "description": "Perché vende, con parole sue. Esempi: trasferimento di lavoro, eredità da dividere, famiglia che cresce, disinvestimento."
+                          },
+                          "next_step": {
+                            "type": "string",
+                            "description": "Cosa succede dopo la vendita: dove andrà ad abitare, cosa deve comprare, chiudere o attendere prima."
+                          },
+                          "already_found_new_home": {
+                            "type": "boolean",
+                            "description": "true se ha già trovato o comprato la casa in cui andrà ad abitare."
+                          },
+                          "other_agency_mandate": {
+                            "type": "boolean",
+                            "description": "true se ha un mandato attivo con un'altra agenzia, in esclusiva o no."
+                          },
+                          "tried_selling_alone": {
+                            "type": "boolean",
+                            "description": "true se ha già provato a vendere da solo, per esempio con annunci pubblicati in proprio."
+                          }
+                        }
+                      },
+                      "timeline_declared_months": {
+                        "type": "integer",
+                        "description": "Entro quanti mesi dice lui di voler vendere. Numero intero di mesi."
+                      },
+                      "timeline_real_months": {
+                        "type": "integer",
+                        "description": "Entro quanti mesi la vendita è realistica secondo il racconto, non secondo la data dichiarata. Ometti del tutto il campo quando un blocco vero rende il tempo non determinabile: ripetere qui il numero dichiarato quando il racconto lo smentisce vale zero."
+                      },
+                      "blocker": {
+                        "type": "string",
+                        "description": "Il vincolo che blocca la vendita, in forma breve e senza spazi. Uno fra: successione_non_conclusa, mandato_esclusiva_attivo, decisione_terzo_comproprietario, delibera_mutuo_in_corso, inquilino_fino_a_dicembre, non_e_un_proprietario, opt_out_richiesto. Ometti il campo se non ci sono blocchi."
+                      },
+                      "evidence": {
+                        "type": "array",
+                        "description": "Da una a tre citazioni letterali del proprietario che giustificano class, timeline_real_months e blocker. Devono comparire davvero nella trascrizione.",
+                        "items": {
+                          "type": "object",
+                          "description": "Una citazione con il turno in cui è stata detta.",
+                          "properties": {
+                            "quote": {
+                              "type": "string",
+                              "description": "La frase del proprietario copiata parola per parola dalla conversazione, senza riformularla."
+                            },
+                            "turn": {
+                              "type": "integer",
+                              "description": "Numero progressivo del turno della conversazione in cui la frase è stata detta, partendo da 1."
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "valuation": {
+                    "type": "object",
+                    "description": "La forchetta di prezzo restituita da valuta_immobile. Ometti il campo se non hai chiamato lo strumento: non inventare numeri.",
+                    "properties": {
+                      "low": {
+                        "type": "integer",
+                        "description": "Estremo basso della forchetta in euro, copiato dal campo low della risposta di valuta_immobile."
+                      },
+                      "high": {
+                        "type": "integer",
+                        "description": "Estremo alto della forchetta in euro, copiato dal campo high della risposta di valuta_immobile."
+                      },
+                      "source": {
+                        "type": "string",
+                        "description": "Da dove viene la stima. Scrivi sempre 'api' quando il valore arriva da valuta_immobile."
+                      },
+                      "comparables": {
+                        "type": "array",
+                        "description": "I tre comparabili restituiti da valuta_immobile, copiati come sono.",
+                        "items": {
+                          "type": "object",
+                          "description": "Una transazione comparabile restituita dall'API.",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "description": "Codice del comparabile. Formato CMP-0001."
+                            },
+                            "zone": {
+                              "type": "string",
+                              "description": "Zona in cui si trova il comparabile. Esempio: 'Isola'."
+                            },
+                            "sqm": {
+                              "type": "integer",
+                              "description": "Superficie del comparabile in metri quadri."
+                            },
+                            "sold_price": {
+                              "type": "integer",
+                              "description": "Prezzo di vendita del comparabile in euro."
+                            },
+                            "price_per_sqm": {
+                              "type": "integer",
+                              "description": "Prezzo al metro quadro del comparabile in euro."
+                            },
+                            "sold_at": {
+                              "type": "string",
+                              "description": "Data della vendita del comparabile, formato AAAA-MM-GG."
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "appointment": {
+                    "type": "object",
+                    "description": "L'appuntamento con l'agente immobiliare. Compilalo anche quando non lo hai fissato, spiegando perché.",
+                    "properties": {
+                      "agent_id": {
+                        "type": "string",
+                        "description": "Codice dell'agente immobiliare assegnato, come lo restituisce la Mock API. Formato AGT-012."
+                      },
+                      "slot": {
+                        "type": "string",
+                        "description": "Codice dello slot prenotato. Formato SLT-00042. Ometti il campo se non hai prenotato nulla."
+                      },
+                      "status": {
+                        "type": "string",
+                        "description": "Esito della prenotazione. Uno fra: booked se l'appuntamento è stato fissato, not_booked se non lo è stato."
+                      },
+                      "reason": {
+                        "type": "string",
+                        "description": "Perché l'appuntamento non è stato fissato, in una frase. Compilalo sempre quando status è not_booked."
+                      }
+                    }
+                  },
+                  "outcome": {
+                    "type": "string",
+                    "description": "Esito della telefonata. Uno fra: qualified se il lead è lavorabile adesso, qualified_on_hold se è buono ma bloccato, rejected se non è lavorabile, opt_out se ha chiesto di non essere più contattato."
+                  },
+                  "privacy": {
+                    "type": "object",
+                    "description": "Lo stato del consenso al ricontatto, come risulta da questa telefonata.",
+                    "properties": {
+                      "consent": {
+                        "type": "boolean",
+                        "description": "true se in questa telefonata ha dato il consenso a essere ricontattato."
+                      },
+                      "opt_out": {
+                        "type": "boolean",
+                        "description": "true se in questa telefonata ha chiesto di non essere più contattato."
+                      },
+                      "opt_out_history": {
+                        "type": "boolean",
+                        "description": "true se risulta che avesse già chiesto l'opt-out in passato, prima di questa telefonata."
+                      },
+                      "consent_reconfirmed": {
+                        "type": "boolean",
+                        "description": "true se, dopo un opt-out passato, ha riattivato adesso il consenso in modo esplicito."
+                      }
+                    }
+                  }
+                },
+                "required": ["lead", "readiness", "outcome"]
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "platform_settings": {
+    "evaluation": {
+      "criteria": [
+        {
+          "id": "dati_raccolti",
+          "name": "dati_raccolti",
+          "type": "prompt",
+          "conversation_goal_prompt": "L'agente ha raccolto indirizzo, citta, superficie, piano, stato e titolarita."
+        },
+        {
+          "id": "predisposizione",
+          "name": "predisposizione",
+          "type": "prompt",
+          "conversation_goal_prompt": "L'agente ha ricostruito il progetto di vendita e l'orizzonte reale, non solo quello dichiarato."
+        }
+      ]
+    }
+  }
+}

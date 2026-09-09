@@ -1,0 +1,56 @@
+{
+  "conversation_id": "conv_01k9xz3f8a2b7c",
+  "lead": {
+    "name": "Giulia Ferrari",
+    "phone": "3331234567",
+    "address": "Via Torino 12",
+    "city": "Milano",
+    "sqm": 85,
+    "floor": 2,
+    "elevator": true,
+    "condition": "buono_stato",
+    "energy_class": "D",
+    "year_built": 1968,
+    "ownership": "proprietario_unico"
+  },
+  "readiness": {
+    "class": "vincolato",
+    "sale_project": {
+      "reason": "acquisto_casa_piu_grande",
+      "next_step": "Compra una casa più grande in zona e vende dopo la delibera del mutuo",
+      "already_found_new_home": true,
+      "other_agency_mandate": false,
+      "tried_selling_alone": false
+    },
+    "timeline_declared_months": 3,
+    "timeline_real_months": null,
+    "blocker": "delibera_mutuo_in_corso",
+    "evidence": [
+      { "quote": "vorrei chiudere entro tre mesi", "turn": 6 },
+      { "quote": "la banca deve ancora deliberare il mutuo per la casa nuova", "turn": 9 }
+    ]
+  },
+  "valuation": {
+    "low": 310000,
+    "high": 345000,
+    "source": "api",
+    "comparables": [
+      { "id": "CMP-0412", "zone": "Isola", "sqm": 82, "sold_price": 322000, "price_per_sqm": 3927, "sold_at": "2026-05-14" },
+      { "id": "CMP-0398", "zone": "Isola", "sqm": 90, "sold_price": 341000, "price_per_sqm": 3789, "sold_at": "2026-04-02" },
+      { "id": "CMP-0451", "zone": "Garibaldi", "sqm": 84, "sold_price": 335000, "price_per_sqm": 3988, "sold_at": "2026-06-21" }
+    ]
+  },
+  "appointment": {
+    "agent_id": "AGT-003",
+    "slot": "SLT-00118",
+    "status": "booked",
+    "reason": null
+  },
+  "outcome": "qualified",
+  "privacy": {
+    "consent": true,
+    "opt_out": false,
+    "opt_out_history": false,
+    "consent_reconfirmed": false
+  }
+}
